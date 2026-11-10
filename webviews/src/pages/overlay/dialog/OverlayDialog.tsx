@@ -1,5 +1,6 @@
-// The one cmux dialog (R96), drawn on the overlay page over the window's own glass: the title, the
-// asking origin, the lines, the fields and the buttons (CmuxDialogSpec). The native host places the
+// The one cmux dialog (R96), drawn on the overlay page over the window's own glass: the icon at the
+// left, then the title, the asking origin, the lines, the fields and the buttons in one column beside
+// it (CmuxDialogSpec). The native host places the
 // page over the dialog's region, fades it in and dims the window; this card lays itself out in the
 // middle and tells the host its rect, where the glass goes. Keys follow CmuxDialogKeys (keys.ts).
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
@@ -165,43 +166,47 @@ export function OverlayDialog({ dialog, onEdit, onPress, onLayout, onPainted }: 
         className="overlay-dialog"
         data-layout={dialog.layout}
         data-identifier={dialog.identifier}
+        data-has-icon={dialog.icon ? "" : undefined}
         // The card takes the keyboard when no text field does (Return, Escape), as an open popover does,
         // and like one it draws no ring around itself: the clear card's ring was a dark second edge around
         // the native glass (Lawrence 2026-11-07, "weird border"). Its buttons keep their rings.
         data-focus-ring="none"
         tabIndex={-1}
       >
+        {/* The icon leads at the left and everything else sits in one column beside it (Lawrence 2026-11-09). */}
         {dialog.icon && <img className="overlay-dialog-icon" src={dialog.icon} alt="" />}
-        <h1 className="overlay-dialog-title">{dialog.title}</h1>
-        {dialog.from && <p className="overlay-dialog-from">{dialog.from}</p>}
-        {dialog.lines.length > 0 && (
-          // A long message (an import preview) scrolls here, so the buttons stay on screen.
-          <div className="overlay-dialog-lines">
-            {dialog.lines.map((line, index) => (
-              <p key={index} className="overlay-dialog-line">
-                {line}
-              </p>
+        <div className="overlay-dialog-body">
+          <h1 className="overlay-dialog-title">{dialog.title}</h1>
+          {dialog.from && <p className="overlay-dialog-from">{dialog.from}</p>}
+          {dialog.lines.length > 0 && (
+            // A long message (an import preview) scrolls here, so the buttons stay on screen.
+            <div className="overlay-dialog-lines">
+              {dialog.lines.map((line, index) => (
+                <p key={index} className="overlay-dialog-line">
+                  {line}
+                </p>
+              ))}
+            </div>
+          )}
+          {leading.map((field, index) => (
+            <Field key={fieldKey(field, index)} field={field} values={values} title={dialog.title} onEdit={edit} />
+          ))}
+          <div className="overlay-dialog-buttons" data-stacked={stacked || undefined}>
+            {main.map((button) => (
+              <Button key={button.id} button={button} onPress={press} />
             ))}
           </div>
-        )}
-        {leading.map((field, index) => (
-          <Field key={fieldKey(field, index)} field={field} values={values} title={dialog.title} onEdit={edit} />
-        ))}
-        <div className="overlay-dialog-buttons" data-stacked={stacked || undefined}>
-          {main.map((button) => (
-            <Button key={button.id} button={button} onPress={press} />
+          {quiet.length > 0 && (
+            <div className="overlay-dialog-quiet">
+              {quiet.map((button) => (
+                <Button key={button.id} button={button} quiet onPress={press} />
+              ))}
+            </div>
+          )}
+          {trailing.map((field, index) => (
+            <Field key={fieldKey(field, index)} field={field} values={values} title={dialog.title} onEdit={edit} />
           ))}
         </div>
-        {quiet.length > 0 && (
-          <div className="overlay-dialog-quiet">
-            {quiet.map((button) => (
-              <Button key={button.id} button={button} quiet onPress={press} />
-            ))}
-          </div>
-        )}
-        {trailing.map((field, index) => (
-          <Field key={fieldKey(field, index)} field={field} values={values} title={dialog.title} onEdit={edit} />
-        ))}
       </div>
     </Dialog>
   );

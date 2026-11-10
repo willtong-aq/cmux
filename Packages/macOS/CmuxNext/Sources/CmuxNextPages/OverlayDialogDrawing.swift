@@ -79,6 +79,29 @@ public final class OverlayDialogDrawing: CmuxDialogDrawing {
 @MainActor
 final class OverlayDialogProvider: PageProvider, CmuxDialogRendering {
     private weak var dialog: CmuxDialogPresentation?
+    /// The icon a cmux dialog with none of its own leads with (a `data:` URL): the app's icon. Made once, at the
+    /// first dialog that needs it; tests pass their own.
+    private let makeDefaultIcon: @MainActor () -> String?
+    private lazy var defaultIcon: String? = makeDefaultIcon()
+
+    init(defaultIcon: @escaping @MainActor () -> String? = OverlayDialogProvider.appIconDataURL) {
+        makeDefaultIcon = defaultIcon
+    }
+
+    /// The app's icon at the card's 40 pt, 2x, as a PNG `data:` URL; nil with no app (a test process).
+    static func appIconDataURL() -> String? {
+        guard let app = NSApp else { return nil }
+        let source = app.applicationIconImage ?? NSImage()
+        let side = 80
+        guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8,
+                                            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                            bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        source.draw(in: NSRect(x: 0, y: 0, width: side, height: side))
+        NSGraphicsContext.restoreGraphicsState()
+        return bitmap.representation(using: .png, properties: [:]).map { "data:image/png;base64," + $0.base64EncodedString() }
+    }
     /// The view showing the dialog: the card's glass follows the card the page lays out.
     weak var container: OverlayDialogView?
     private var listeners: [UUID: @MainActor (JSONValue) -> Void] = [:]
@@ -201,6 +224,9 @@ final class OverlayDialogProvider: PageProvider, CmuxDialogRendering {
         var wire = Self.wire(dialog, focus: focusSerial == 0 ? .null : ["serial": .number(Double(focusSerial)),
                                                                        "backward": .bool(focusBackward)])
         if case .object(var object) = wire {
+            // A cmux dialog with no icon of its own leads with the app's; a web page's (it names its origin) never does,
+            // so a page cannot pose as cmux.
+            if object["icon"] == nil, dialog.spec.origin == nil, let icon = defaultIcon { object["icon"] = .string(icon) }
             object["shown"] = .number(Double(max(shows, 1)))
             object["valuesSerial"] = .number(Double(valuesSerial))
             wire = .object(object)

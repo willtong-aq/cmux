@@ -1,5 +1,5 @@
 // The one button of every web dialog and sheet (u2647): it shows the key that presses it, as the
-// native cmux dialogs do ("Cancel ⎋", "Create ↩", "Don't Save ⌘D"), and tells assistive tech the
+// native cmux dialogs do ("Cancel esc", "Create ↩", "Don't Save ⌘D"), and tells assistive tech the
 // same key (aria-keyshortcuts). Return and Escape are answered by the dialog itself (a form submit,
 // ui/Dialog's Escape); a Command key is answered here while the button is mounted and enabled.
 import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode, type Ref } from "react";
@@ -9,10 +9,10 @@ import { cx } from "./cx";
  * Command plus one character. */
 export type DialogKey = "return" | "escape" | "left" | "right" | { command: string };
 
-/** The keycap text, as macOS menus write keys. */
+/** The keycap text: "↩", "esc" (as a Mac keyboard prints it), "⌘D". */
 export function dialogKeyGlyph(key: DialogKey): string {
   if (key === "return") return "↩";
-  if (key === "escape") return "⎋";
+  if (key === "escape") return "esc";
   if (key === "left") return "←";
   if (key === "right") return "→";
   return `⌘${key.command.toUpperCase()}`;
