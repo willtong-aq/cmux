@@ -146,7 +146,9 @@ test("a safe-default dialog draws its destructive choice quiet, under the main r
   );
   expect(main).toEqual(["cancel", "keep"]);
   expect(quiet).toEqual(["end"]);
-  expect(card.lastElementChild?.querySelector('[data-field="dontAsk"]')).not.toBeNull();
+  expect(
+    card.querySelector(".overlay-dialog-body")?.lastElementChild?.querySelector('[data-field="dontAsk"]'),
+  ).not.toBeNull();
   expect(card.querySelector(".overlay-dialog-keyhint")).toBeNull();
 });
 
@@ -428,4 +430,36 @@ test("a dialog with no text field gives its card the keyboard, and the card draw
   expect(focused.getAttribute("data-focus-ring")).toBe("none");
   // Its buttons keep the keyboard ring.
   expect(host.querySelector('[data-button="ok"]')!.hasAttribute("data-focus-ring")).toBe(false);
+});
+
+// Lawrence 2026-11-09 ("here's a design that i like"): the icon leads at the left, and the title, the
+// lines and the buttons sit in one column beside it, as a macOS permission notice draws them.
+test("an icon leads the card and the title, lines and buttons sit beside it", async () => {
+  const { host } = await render({
+    ...quit,
+    layout: "standard",
+    icon: "data:image/png;base64,iVBORw0KGgo=",
+    buttons: [
+      { id: "cancel", title: "Not Now", role: "cancel", hint: "esc", hintLabel: "Escape" },
+      { id: "keep", title: "Turn On", role: "default", hint: "↩", hintLabel: "Return" },
+    ],
+  });
+  const card = host.querySelector(".overlay-dialog")!;
+  expect(card.hasAttribute("data-has-icon")).toBe(true);
+  expect(card.firstElementChild?.className).toBe("overlay-dialog-icon");
+  const body = card.children[1]!;
+  expect(body.className).toBe("overlay-dialog-body");
+  expect(body.firstElementChild?.textContent).toBe("Quit cmux?");
+  expect(body.querySelector(".overlay-dialog-line")?.textContent).toBe("2 terminals are running.");
+  expect(
+    [...body.querySelectorAll(".overlay-dialog-buttons button")].map((node) => node.getAttribute("data-button")),
+  ).toEqual(["cancel", "keep"]);
+});
+
+test("with no icon the card draws no icon column", async () => {
+  const { host } = await render({ ...quit, layout: "standard" });
+  const card = host.querySelector(".overlay-dialog")!;
+  expect(card.hasAttribute("data-has-icon")).toBe(false);
+  expect(card.querySelector(".overlay-dialog-icon")).toBeNull();
+  expect(card.firstElementChild?.className).toBe("overlay-dialog-body");
 });
