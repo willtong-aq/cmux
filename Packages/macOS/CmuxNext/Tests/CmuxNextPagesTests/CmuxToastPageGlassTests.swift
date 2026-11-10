@@ -60,11 +60,11 @@ struct CmuxToastPageGlassTests {
     }
 
     /// The toast's glass sits in the overlay panel, a clear window over the window it covers. Liquid Glass
-    /// there has nothing in its own window to bend: its lens drew a dark 1 px line and a bright bevel
-    /// inside the toast's rim, as it did on the dialog card (Lawrence 2026-11-07, the Leave site? dialog:
-    /// "weird roundness", "weird border"). Each toast's glass is the blur of what is behind the window,
-    /// with the toast's rim as its one edge.
-    @Test func eachToastsGlassBlursWhatIsBehindItsClearWindowNeverLiquidGlass() throws {
+    /// there bends the page's window behind it (measured on macOS 27); the frosted blur with the veil
+    /// painted on it read flat gray (Lawrence 2026-11-09: "i need to be able to see liquid glass effect").
+    /// Each toast's glass is the toast surface's Liquid Glass where this Mac draws it, with its rim as its
+    /// one edge.
+    @Test func eachToastsGlassIsTheToastSurfacesLiquidGlass() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("toast-blur-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -77,9 +77,12 @@ struct CmuxToastPageGlassTests {
         view.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
         view.placeGlass(resting: [(1, NSRect(x: 100, y: 336, width: 300, height: 44))], fading: [])
         let surface = try #require(view.subviews.compactMap { $0 as? OverlaySurfaceView }.first)
-        #expect(surface.prefersBlurToLiquidGlass)
+        let toast = Glass.makeSurface(.toast, cornerRadius: SurfaceRole.toast.cornerRadius, interactive: false)
+        #expect(surface.material == toast.material, "the toast surface's material on this Mac")
+        if Glass.isLiquidGlassAvailable, !ReduceTransparency.shared.isEnabled {
+            #expect(surface.material == .liquidGlass, "Liquid Glass, never the frosted blur")
+        }
         #expect(surface.samplesBehindWindow)
-        #expect(surface.material != .liquidGlass)
         // One edge: the toast's rim, at the toast's corner.
         let rim = try #require(surface.rimView)
         #expect(rim.cornerRadius == SurfaceRole.toast.cornerRadius)
