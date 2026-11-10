@@ -20,7 +20,7 @@ export interface DialogButtonSpec {
   id: string;
   title: string;
   role: DialogButtonRole;
-  /** The keycap the button shows ("↩", "⎋", "⌘D"); none in the safe-default layout. */
+  /** The keycap the button shows ("↩", "esc", "⌘D"); none in the safe-default layout. */
   hint?: string;
   /** The key as VoiceOver reads it ("Command-D"). */
   hintLabel?: string;

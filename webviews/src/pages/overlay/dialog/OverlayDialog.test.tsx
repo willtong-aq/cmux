@@ -165,12 +165,12 @@ test("a standard dialog shows each button's key and tells the host its card", as
     ...quit,
     layout: "standard",
     buttons: [
-      { id: "cancel", title: "Cancel", role: "cancel", hint: "⎋", hintLabel: "Escape" },
+      { id: "cancel", title: "Cancel", role: "cancel", hint: "esc", hintLabel: "Escape" },
       { id: "keep", title: "Keep", role: "default", hint: "↩", hintLabel: "Return" },
     ],
   });
   const hints = [...host.querySelectorAll(".overlay-dialog-keyhint")].map((node) => node.textContent);
-  expect(hints).toEqual(["⎋", "↩"]);
+  expect(hints).toEqual(["esc", "↩"]);
   expect(host.querySelector('[data-button="keep"]')?.getAttribute("aria-keyshortcuts")).toBe("Return");
   expect(layouts.length).toBeGreaterThan(0);
 });

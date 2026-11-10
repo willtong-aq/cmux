@@ -18,11 +18,14 @@
 }
 .overlay-dialog {
   --overlay-dialog-gap: var(--ds-space-2);
-  --overlay-dialog-button-height: calc(26px * var(--cmux-interface-scale, 1));
+  --overlay-dialog-button-height: calc(28px * var(--cmux-interface-scale, 1));
+  /* The keycap sits inside its button with the same inset on its top, bottom and end, and its corners
+     follow the button's (concentric: the keycap's radius is the button's less that inset). */
+  --overlay-dialog-key-inset: calc(5px * var(--cmux-interface-scale, 1));
+  --overlay-dialog-button-radius: calc(9px * var(--cmux-interface-scale, 1));
   box-sizing: border-box;
   display: flex;
-  flex-direction: column;
-  gap: var(--overlay-dialog-gap);
+  gap: var(--ds-space-3);
   width: calc(380px * var(--cmux-interface-scale, 1));
   padding: var(--ds-space-4);
   border-radius: var(--surface-sheet-radius);
@@ -32,13 +35,27 @@
   letter-spacing: var(--text-body--letter-spacing);
   outline: none;
 }
+/* With an icon the card is a little wider, so the text column keeps the width it had. */
+.overlay-dialog[data-has-icon] {
+  width: calc(432px * var(--cmux-interface-scale, 1));
+}
 .overlay-dialog-icon {
-  width: var(--ds-space-40);
-  height: var(--ds-space-40);
+  flex: none;
+  width: calc(40px * var(--cmux-interface-scale, 1));
+  height: calc(40px * var(--cmux-interface-scale, 1));
+}
+.overlay-dialog-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--overlay-dialog-gap);
+  min-width: 0;
 }
 .overlay-dialog-title {
   margin: 0;
   font: inherit;
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
   font-weight: var(--weight-emphasis, 600);
   overflow-wrap: anywhere;
 }
@@ -64,6 +81,10 @@
   max-height: calc(320px * var(--cmux-interface-scale, 1));
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+/* The first line reads as the title's subtitle, close under it. */
+.overlay-dialog-title + .overlay-dialog-lines {
+  margin-top: calc(-1 * var(--ds-space-1));
 }
 .overlay-dialog-field {
   display: grid;
@@ -125,12 +146,12 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  gap: 0.5em;
+  gap: var(--ds-space-2);
   min-width: calc(72px * var(--cmux-interface-scale, 1));
   height: var(--overlay-dialog-button-height);
-  padding: 0 var(--ds-space-4);
+  padding: 0 var(--ds-space-3);
   border: none;
-  border-radius: var(--ds-radius-control);
+  border-radius: var(--overlay-dialog-button-radius);
   background: var(--ds-color-hover);
   color: var(--ds-color-fg);
   font: inherit;
@@ -158,9 +179,23 @@
 .overlay-dialog-button[data-quiet]:hover {
   background: var(--ds-color-hover);
 }
+.overlay-dialog-button:has(> .overlay-dialog-keyhint) {
+  padding-inline-end: var(--overlay-dialog-key-inset);
+}
+/* A keycap: a small rounded plate in the title's own ink, quieter than the title. */
 .overlay-dialog-keyhint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: calc(var(--overlay-dialog-button-height) - 2 * var(--overlay-dialog-key-inset));
+  height: calc(var(--overlay-dialog-button-height) - 2 * var(--overlay-dialog-key-inset));
+  padding: 0 var(--ds-space-1);
+  border-radius: calc(var(--overlay-dialog-button-radius) - var(--overlay-dialog-key-inset));
+  background: color-mix(in srgb, currentColor 14%, transparent);
   font: inherit;
   font-size: var(--text-caption);
+  font-weight: var(--weight-emphasis, 600);
   line-height: 1;
-  opacity: 0.7;
+  opacity: 0.75;
 }

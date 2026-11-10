@@ -11,7 +11,7 @@ const base: DialogState = {
   lines: ["The terminal is still running a command."],
   fields: [],
   buttons: [
-    { id: "cancel", title: "Cancel", role: "cancel", hint: "⎋", hintLabel: "Escape" },
+    { id: "cancel", title: "Cancel", role: "cancel", hint: "esc", hintLabel: "Escape" },
     { id: "close", title: "Close", role: "default", hint: "↩", hintLabel: "Return" },
   ],
   keys: { return: "close", escape: "cancel", command: {} },
@@ -46,7 +46,7 @@ const prompt: DialogState = {
     { kind: "text", id: "password", label: "Password", secure: true },
   ],
   buttons: [
-    { id: "cancel", title: "Cancel", role: "cancel", hint: "⎋", hintLabel: "Escape" },
+    { id: "cancel", title: "Cancel", role: "cancel", hint: "esc", hintLabel: "Escape" },
     { id: "ok", title: "Sign In", role: "default", hint: "↩", hintLabel: "Return" },
   ],
   keys: { return: "ok", escape: "cancel", command: {} },
@@ -71,7 +71,7 @@ const save: DialogState = {
   ],
   buttons: [
     { id: "discard", title: "Don't Save", role: "destructive", hint: "⌘D", hintLabel: "Command-D" },
-    { id: "cancel", title: "Cancel", role: "cancel", hint: "⎋", hintLabel: "Escape" },
+    { id: "cancel", title: "Cancel", role: "cancel", hint: "esc", hintLabel: "Escape" },
     { id: "save", title: "Save", role: "default", hint: "↩", hintLabel: "Return" },
   ],
   keys: { return: "save", escape: "cancel", command: { d: "discard" } },
@@ -84,7 +84,7 @@ const paste: DialogState = {
   lines: ["The terminal runs each line as you paste it."],
   fields: [{ kind: "preview", text: "git fetch origin\ngit reset --hard origin/main\nnpm run deploy" }],
   buttons: [
-    { id: "deny", title: "Cancel", role: "cancel", hint: "⎋", hintLabel: "Escape" },
+    { id: "deny", title: "Cancel", role: "cancel", hint: "esc", hintLabel: "Escape" },
     { id: "paste", title: "Paste", role: "default", hint: "↩", hintLabel: "Return" },
   ],
   keys: { return: "paste", escape: "deny", command: {} },
@@ -95,7 +95,7 @@ const stacked: DialogState = {
   title: "Fermer cet onglet ?",
   lines: ["Le terminal exécute encore une commande."],
   buttons: [
-    { id: "cancel", title: "Annuler", role: "cancel", hint: "⎋", hintLabel: "Échap" },
+    { id: "cancel", title: "Annuler", role: "cancel", hint: "esc", hintLabel: "Échap" },
     { id: "keep", title: "Garder l'onglet ouvert", role: "normal" },
     { id: "close", title: "Fermer et arrêter la commande", role: "default", hint: "↩", hintLabel: "Retour" },
   ],
