@@ -41,8 +41,8 @@
 }
 .overlay-dialog-icon {
   flex: none;
-  width: calc(40px * var(--cmux-interface-scale, 1));
-  height: calc(40px * var(--cmux-interface-scale, 1));
+  width: var(--ds-space-40);
+  height: var(--ds-space-40);
 }
 .overlay-dialog-body {
   display: flex;
