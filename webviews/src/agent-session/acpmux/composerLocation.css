@@ -494,6 +494,14 @@
   width: auto;
   gap: 4px;
 }
+/* The mode's symbol at the chips' glyph size, the model mark's (the chip tokens above); it drew at
+   the Icon default's 18. Its box keeps the 18 px it had, so the shield's center stays under +. */
+:is(.acpmux-composer-bar, .nt-pickers) .acpmux-access-trigger > .acpmux-icon:first-child {
+  --acpmux-mode-glyph-box: 18px;
+  width: var(--acpmux-chip-glyph, 16px);
+  height: var(--acpmux-chip-glyph, 16px);
+  margin-inline: calc((var(--acpmux-mode-glyph-box) - var(--acpmux-chip-glyph, 16px)) / 2);
+}
 :is(.acpmux-composer-bar, .nt-pickers) .acpmux-model .acpmux-picker-button,
 :is(.acpmux-composer-bar, .nt-pickers) .acpmux-effort .acpmux-picker-button,
 :is(.acpmux-composer-bar, .nt-pickers) .acpmux-access .acpmux-picker-button {
@@ -1387,6 +1395,14 @@
      1.35 draws 1.5 px at 18. The control stays 28, so every center and inset holds. */
   --acpmux-composer-trail-glyph: 18px;
   --acpmux-composer-trail-stroke: 1.35;
+  /* The chips' own set (Lawrence 2026-11-09: "all font sizes and icons sizes here need to be more
+     consistent"): every chip around the box, the folder and computer over it and the permission
+     mode and model under it, draws a 16 px leading glyph (the icon scale's button step, the model
+     mark's size), a 12 px chevron and its label in the control style. The glyph sits in a box the
+     width of the one it replaced (margin below), so no chip's width or column moves.
+     test/newtab-chip-scale.test.ts measures it. */
+  --acpmux-chip-glyph: 16px;
+  --acpmux-chip-chevron: 12px;
   --acpmux-composer-inset: calc(8px * var(--cmux-interface-scale, 1));
   /* The room over and under a one-line prompt's controls: more than the side inset, so the text
      never sits on the box's bottom edge (Leo 2026-11-01: "this is all still not aligned there's not
