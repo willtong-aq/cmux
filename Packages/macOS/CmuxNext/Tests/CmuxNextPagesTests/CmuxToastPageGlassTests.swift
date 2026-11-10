@@ -83,9 +83,13 @@ struct CmuxToastPageGlassTests {
             #expect(surface.material == .liquidGlass, "Liquid Glass, never the frosted blur")
         }
         #expect(surface.samplesBehindWindow)
-        // One edge: the toast's rim, at the toast's corner.
-        let rim = try #require(surface.rimView)
-        #expect(rim.cornerRadius == SurfaceRole.toast.cornerRadius)
+        // One edge: Liquid Glass's own (the picked variant 1), else the toast's rim at the toast's corner.
+        if surface.material == .liquidGlass, OverlayGlassVariant.picked == .appKitRegular {
+            #expect(surface.rimView == nil)
+        } else if surface.material != .opaque {
+            let rim = try #require(surface.rimView)
+            #expect(rim.cornerRadius == SurfaceRole.toast.cornerRadius)
+        }
         view.releasePage()
     }
 
