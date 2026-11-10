@@ -102,6 +102,22 @@ const stacked: DialogState = {
   keys: { return: "close", escape: "cancel", command: {} },
 };
 
+// The app's icon (Assets.xcassets AppIcon 128 px), as the host sends it for a cmux dialog with none of its own.
+const APP_ICON = new URL("../../../gallery/fixtures/assets/cmux-app-icon.png", import.meta.url).href;
+
+// Lawrence 2026-11-09's reference: the icon at the left, a title, one line, Not Now and Turn On with their keys.
+const consent: DialogState = {
+  ...base,
+  title: "Allow a program to read the clipboard?",
+  lines: ["A command in “zsh” asks to read what you copied."],
+  icon: APP_ICON,
+  buttons: [
+    { id: "deny", title: "Not Now", role: "cancel", hint: "esc", hintLabel: "Escape" },
+    { id: "allow", title: "Allow", role: "default", hint: "↩", hintLabel: "Return" },
+  ],
+  keys: { return: "allow", escape: "deny", command: {} },
+};
+
 function DialogGallery({ dialog }: { dialog: DialogState }) {
   return (
     <div className="overlay-dialog-gallery">
@@ -124,7 +140,14 @@ export default componentEntry<{ dialog: DialogState }>({
     await import("./OverlayDialog.gallery.css");
   },
   variants: {
-    confirm: { note: "Two buttons with their keys: Escape cancels, Return closes.", props: { dialog: base } },
+    consent: {
+      note: "A cmux dialog leads with the app's icon; title, one line and keyed buttons sit beside it.",
+      props: { dialog: consent },
+    },
+    confirm: {
+      note: "Two buttons with their keys: esc cancels, Return closes. The host adds the app icon.",
+      props: { dialog: { ...base, icon: APP_ICON } },
+    },
     quit: {
       note: "Safe default: Cancel and Keep Sessions on one line, the end choices quiet red under them, Don't ask again last.",
       props: { dialog: quit },
