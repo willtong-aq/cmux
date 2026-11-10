@@ -3,18 +3,23 @@ import AppKit
 @testable import CmuxNextPages
 import Testing
 
-/// Lawrence 2026-11-07, a Leave site? dialog over Gmail: "dialog has weird roundness", "like there's weird
-/// border??". The card sits in the overlay panel, a clear window over the page's own window. Liquid Glass
-/// there has nothing in its window to bend, and its lens drew a dark 1 px outline under the rim; the card
-/// also cast no shadow, so it read flat on the page. Every dialog (JavaScript alert, confirm, prompt, Leave
-/// site?, HTTP sign-in) draws on this one card.
+/// Every dialog (JavaScript alert, confirm, prompt, Leave site?, HTTP sign-in, the app's confirms) draws on
+/// this one card, in the overlay panel: a clear window over the page's own window.
+///
+/// Lawrence 2026-11-09, on the frosted card: "i need to be able to see liquid glass effect". Liquid Glass
+/// in the clear panel bends the page's window behind it (a child window over a child window, measured on
+/// macOS 27): the flat look was the blur and the veil painted over it, not the glass. The card is the
+/// sheet's Liquid Glass where this Mac draws it; Reduce Transparency keeps the opaque surface.
 @MainActor
 struct OverlayDialogCardTests {
-    @Test func theCardBlursWhatIsBehindItsClearWindowNeverLiquidGlass() {
+    @Test func theCardIsTheSheetsLiquidGlassWhereThisMacDrawsIt() {
         let card = OverlayDialogCard(activeLook: nil)
-        #expect(card.glass.prefersBlurToLiquidGlass)
-        #expect(card.glass.samplesBehindWindow)
-        #expect(card.glass.material != .liquidGlass)
+        let sheet = Glass.makeSurface(.sheet, content: NSView())
+        #expect(card.glass.material == sheet.material, "the sheet's material on this Mac")
+        if Glass.isLiquidGlassAvailable, !ReduceTransparency.shared.isEnabled {
+            #expect(card.glass.material == .liquidGlass, "Liquid Glass, never the frosted blur")
+        }
+        #expect(card.glass.samplesBehindWindow, "the blur (macOS 14 and 15) samples the page behind the window")
     }
 
     @Test func theCardCastsThePopupShadowAtItsOwnRoundedRect() throws {
