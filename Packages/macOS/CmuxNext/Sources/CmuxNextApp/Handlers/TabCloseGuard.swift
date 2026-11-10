@@ -82,12 +82,14 @@ enum TabCloseGuard {
     /// shows, a Cmd-W behind it closes nothing until the person answers.
     private(set) static var reading: Set<String> = []
 
-    /// ``TabStripModel/cmdWTarget(_:closing:skipped:)`` for `pane`: its tabs still in the daemon's read, or whose page
-    /// decides its close (``PageClosingTabs``), are closing; tabs whose question shows are never the next one.
+    /// ``TabStripModel/cmdWTarget(_:closing:skipped:openers:)`` for `pane`: its tabs still in the daemon's read, or whose
+    /// page decides its close (``PageClosingTabs``), are closing; tabs whose question shows are never the next one; the
+    /// pane's opener relations pick as Chrome's do.
     static func cmdWTarget(_ id: StripTabID, in pane: PaneController) -> StripTabID? {
         let pages = pane.services.closedTabs?.undoToasts.pageClosing
         return pane.stripModel.cmdWTarget(id, closing: { reading.contains($0.rawValue) || pages?.contains($0.rawValue) == true },
-                                          skipped: { asking.contains($0.rawValue) })
+                                          skipped: { asking.contains($0.rawValue) },
+                                          openers: Dictionary(uniqueKeysWithValues: pane.closeOpeners().map { (StripTabID($0.key), StripTabID($0.value)) }))
     }
 
     /// A Close Tab press as ``PaneCloseAim`` reads it: the input event AppKit is dispatching (its

@@ -129,6 +129,8 @@ enum TabLifecycle {
             ?? (pane.tabs.indices.contains(pane.defaultTabIndex) ? pane.tabs[pane.defaultTabIndex].id : nil)
         let tab = pane.tabs.first { $0.id == selectedID }
         let user = invocation.origin == .user
+        // A person's new tab returns to this tab when closed at once, as Chrome's Cmd-T (NewTabOpenerArm).
+        if user, let controller, let tab { controller.newTabOpener = NewTabOpenerArm(opener: tab.surface, before: Set(pane.tabs.map(\.id))) }
         // Agent tabs and pages count as a kind for the user only: a script's
         // `tab new` always gets a terminal or browser it can drive.
         let onAgentTab = user && controller != nil && selectedID.map { ctx.services.agentTabs.isAgentTab($0) } == true
@@ -412,7 +414,7 @@ enum TabLifecycle {
             // A Cmd-W while the last one's close still asks the daemon closes the next tab (TabCloseGuard).
             guard let id = invocation.origin == .user ? TabCloseGuard.cmdWTarget(selected, in: pane) : selected else { return }
             // The user's Cmd-W closes a pinned tab like any other, as Chrome's does (cmux-ad i8); the close
-            // selects by the one rule (FocusAfterClose.tab: the tab before). Only Home's tab is kept.
+            // selects by the one rule (FocusAfterClose.tab: Chrome's). Only Home's tab is kept.
             if invocation.origin == .user {
                 // Several selected tabs close together (Chrome).
                 if let selected = pane.stripModel.keyboardCloseSelection(id) {

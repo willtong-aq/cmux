@@ -2,34 +2,41 @@
 import Testing
 import CmuxNextDesignTokens
 
-/// Closing the selected tab selects the shown tab immediately before it, else the one after it
-/// (Lawrence 2026-11-08: "it should always focus the tab before it if it exists"; close-focus.md,
-/// Tab). No opener, history or "next to the right" order picks.
+/// Closing the selected tab selects as Chrome does (`TabStripModel::DetermineNewSelectedIndex`; Lawrence
+/// 2026-11-09: "ensure our cmd w behavior matches chrome"; close-focus.md, Chrome table): a tab it opened, a
+/// sibling, its opener, its group's neighbor, else the shown tab after it, else before it. Case ids are the table's.
 struct FocusAfterCloseTabTests {
-    private static func pick(_ closed: String, in old: [String], hidden: Set<String> = []) -> String? {
+    private static func pick(_ closed: String, in old: [String], hidden: Set<String> = [], opener: [String: String] = [:],
+                             group: [String: String] = [:]) -> String? {
         let surviving = old.filter { $0 != closed }
-        return FocusAfterClose.tab(selected: closed, old: old, surviving: surviving, shown: Set(surviving).subtracting(hidden))
+        return FocusAfterClose.tab(selected: closed, old: old, surviving: surviving, shown: Set(surviving).subtracting(hidden),
+                                   opener: opener, group: group)
     }
 
-    @Test func theTabBeforeElseTheTabAfter() {
-        #expect(Self.pick("B", in: ["A", "B", "C"]) == "A")
-        #expect(Self.pick("C", in: ["A", "B", "C"]) == "B")
-        // The first tab: the tab after it.
+    @Test func p1P2TheTabAfterElseTheTabBefore() {
+        #expect(Self.pick("B", in: ["A", "B", "C"]) == "C")
         #expect(Self.pick("A", in: ["A", "B", "C"]) == "B")
+        #expect(Self.pick("C", in: ["A", "B", "C"]) == "B")
         #expect(Self.pick("A", in: ["A"]) == nil)
     }
 
-    @Test func aHiddenTabBeforeIsSkipped() {
-        // A and B sit in a collapsed group: the nearest shown tab before C is T.
-        #expect(Self.pick("C", in: ["T", "A", "B", "C", "D"], hidden: ["A", "B"]) == "T")
-        // None shown before: the shown tab after.
-        #expect(Self.pick("C", in: ["A", "B", "C", "D"], hidden: ["A", "B"]) == "D")
-        // None shown at all: the nearest surviving tab before (its group then expands).
-        #expect(Self.pick("C", in: ["A", "B", "C"], hidden: ["A", "B"]) == "B")
+    @Test func p4ASurvivingSelectionStays() {
+        #expect(FocusAfterClose.tab(selected: "A", old: ["A", "B"], surviving: ["A"], shown: ["A"], opener: ["B": "A"]) == "A")
     }
 
-    @Test func aSurvivingSelectionStays() {
-        #expect(FocusAfterClose.tab(selected: "A", old: ["A", "B"], surviving: ["A"], shown: ["A"]) == "A")
+    @Test func o1ToO3TheOpenerFamilyFirst() {
+        #expect(Self.pick("A", in: ["X", "A", "Y", "B"], opener: ["B": "A"]) == "B")              // O1: its child
+        #expect(Self.pick("B", in: ["A", "B", "C", "D"], opener: ["B": "A", "D": "A"]) == "D")    // O2: its sibling
+        #expect(Self.pick("B", in: ["A", "B", "X"], opener: ["B": "A"]) == "A")                   // O3: its opener
+        #expect(Self.pick("B", in: ["X", "B", "Y", "A"], opener: ["B": "A"]) == "A")
+    }
+
+    @Test func g1G2GroupsAndCollapsedOnes() {
+        #expect(Self.pick("C", in: ["A", "B", "C", "D"], group: ["B": "g", "C": "g"]) == "B")    // G1
+        #expect(Self.pick("D", in: ["A", "B", "C", "D"], hidden: ["B", "C"]) == "A")              // G2
+        #expect(Self.pick("A", in: ["A", "B", "C", "D"], hidden: ["B", "C"]) == "D")
+        // None shown at all: the nearest surviving tab after, else before (its group then expands).
+        #expect(Self.pick("C", in: ["A", "B", "C"], hidden: ["A", "B"]) == "B")
     }
 
     @Test func liveOpenersSkipTabsThatLeft() {
@@ -40,10 +47,9 @@ struct FocusAfterCloseTabTests {
         #expect(FocusAfterClose.liveOpeners(["A": "X", "X": "A"], among: ["A"]).isEmpty)
     }
 
-    /// Every strip of up to 5 tabs, every hidden set, every closed tab: the pick is the nearest shown
-    /// tab before the closed one, else the nearest shown one after it, else the nearest surviving one
-    /// before, else after; none only when no tab is left.
-    @Test func everySmallStripPicksTheTabBefore() {
+    /// Every strip of up to 5 tabs, every hidden set, every closed tab, no relations: the nearest shown tab after the
+    /// closed one, else the nearest shown one before, else the nearest surviving one after, else before.
+    @Test func everySmallStripPicksTheTabAfterElseBefore() {
         var checked = 0
         for count in 1...5 {
             let tabs = (0..<count).map { "t\($0)" }
@@ -52,8 +58,8 @@ struct FocusAfterCloseTabTests {
                 for (index, closed) in tabs.enumerated() {
                     checked += 1
                     let before = tabs[..<index].reversed(), after = tabs[(index + 1)...]
-                    let expected = before.first { !hidden.contains($0) } ?? after.first { !hidden.contains($0) }
-                        ?? before.first ?? after.first
+                    let expected = after.first { !hidden.contains($0) } ?? before.first { !hidden.contains($0) }
+                        ?? after.first ?? before.first
                     #expect(Self.pick(closed, in: tabs, hidden: hidden) == expected, "closing \(closed) of \(tabs), hidden \(hidden)")
                 }
             }

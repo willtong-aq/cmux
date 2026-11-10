@@ -8,29 +8,54 @@ import CCmuxLayoutReducerFFI
 /// answer back (the rules compare ids only by identity). The contract (C1-C4) and its model checks
 /// are in the crate's tests (`tests/focus_rules`, closefocus.tla's cases).
 public nonisolated enum FocusAfterClose {
-    /// The tab a pane selects after `selected` closed: the shown tab immediately before it, else
-    /// the shown one after it (Lawrence 2026-11-08: "it should always focus the tab before it if it
-    /// exists"). `old` is the strip order before the close, `shown` the tabs that survive and are not
-    /// hidden (a collapsed group's members are hidden). When no shown tab survives, the first
-    /// surviving tab (its group then expands). A `selected` that survives stays. Every close entry
-    /// point (Cmd-W, the close button, middle-click, the tab menu, the CLI, an exited terminal) and
-    /// the daemon pick with this one rule; no opener, history or "next to the right" order.
-    public static func tab<ID: Hashable>(selected: ID?, old: [ID], surviving: [ID], shown: Set<ID>) -> ID? {
+    /// The tab a pane selects after `selected` closed, by Chrome's rule (`TabStripModel::DetermineNewSelectedIndex`;
+    /// Lawrence 2026-11-09: "ensure our cmd w behavior matches chrome"; close-focus.md, Chrome table): a tab it opened
+    /// (nearest after it, else before it), else a tab its opener opened, else its opener, else in its group the tab after
+    /// it, else before it, else the shown tab after it, else the shown tab before it. `old` is the strip order before the
+    /// close, `shown` the tabs that survive and are not hidden (a collapsed group's members are hidden), `opener` each link
+    /// or new tab's opener (child to opener; tabs that left may be named: their relations are followed, as Chrome's
+    /// `FixOpeners` keeps them), `group` each grouped tab's group. When no shown tab survives, the surviving tab after it,
+    /// else before it (its group then expands). A `selected` that survives stays. Every close entry point (Cmd-W, the
+    /// close button, middle-click, the tab menu, the CLI, an exited terminal) picks with this.
+    public static func tab<ID: Hashable, Group: Hashable>(selected: ID?, old: [ID], surviving: [ID], shown: Set<ID>,
+                                                          opener: [ID: ID] = [:], group: [ID: Group]) -> ID? {
         var map = IDNumbering<ID>()
+        var groups = IDNumbering<Group>()
         let selected = map.optional(selected)
         let old = map.numbers(old)
         let surviving = map.numbers(surviving)
         let shown = map.numbers(shown)
+        let pairs = opener.map { ($0.key, $0.value) }
+        let children = map.numbers(pairs.map(\.0))
+        let parents = map.numbers(pairs.map(\.1))
+        let members = group.map { ($0.key, $0.value) }
+        let groupTabs = map.numbers(members.map(\.0))
+        let groupIDs = groups.numbers(members.map(\.1))
         let pick = old.withUnsafeBufferPointer { old in
             surviving.withUnsafeBufferPointer { surviving in
                 shown.withUnsafeBufferPointer { shown in
-                    // The ABI's opener arrays no longer pick (cmux_close_focus_tab): none are sent.
-                    cmux_close_focus_tab(selected, old.baseAddress, old.count, surviving.baseAddress, surviving.count,
-                                         shown.baseAddress, shown.count, nil, nil, 0)
+                    children.withUnsafeBufferPointer { children in
+                        parents.withUnsafeBufferPointer { parents in
+                            groupTabs.withUnsafeBufferPointer { groupTabs in
+                                groupIDs.withUnsafeBufferPointer { groupIDs in
+                                    cmux_close_focus_tab_chrome(selected, old.baseAddress, old.count, surviving.baseAddress,
+                                                                surviving.count, shown.baseAddress, shown.count,
+                                                                children.baseAddress, parents.baseAddress, children.count,
+                                                                groupTabs.baseAddress, groupIDs.baseAddress, groupTabs.count)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
         return map.id(pick)
+    }
+
+    /// ``tab(selected:old:surviving:shown:opener:group:)`` for a strip without tab groups.
+    public static func tab<ID: Hashable>(selected: ID?, old: [ID], surviving: [ID], shown: Set<ID>,
+                                         opener: [ID: ID] = [:]) -> ID? {
+        tab(selected: selected, old: old, surviving: surviving, shown: shown, opener: opener, group: [ID: Int]())
     }
 
     /// The opener relations among `order`, from `opener` (child to opener, possibly naming tabs

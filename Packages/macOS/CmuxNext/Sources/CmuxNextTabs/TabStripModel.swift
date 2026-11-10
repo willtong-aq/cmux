@@ -112,10 +112,10 @@ public final class TabStripModel {
         tabs.filter(\.isPinned) + tabs.filter { !$0.isPinned }
     }
 
-    /// Closing the selected tab selects the tab before it, or the one after it when it was
-    /// first (``FocusAfterClose/tab(selected:old:surviving:shown:)``). Returns the current
-    /// selection when the closed tab was not selected.
-    /// `visible` are the tabs a collapsed group does not hide; the tab before is the nearest visible one.
+    /// Closing the selected tab selects as Chrome does with no opener relations: the tab after it,
+    /// else the one before it (``FocusAfterClose/tab(selected:old:surviving:shown:opener:)``).
+    /// Returns the current selection when the closed tab was not selected.
+    /// `visible` are the tabs a collapsed group does not hide; the pick is the nearest visible one.
     public static func selectionAfterClosing(_ closed: TabID, in ordered: [TabID], visible: Set<TabID>, selected: TabID?) -> TabID? {
         guard selected == closed, ordered.contains(closed) else { return selected }
         let surviving = ordered.filter { $0 != closed }

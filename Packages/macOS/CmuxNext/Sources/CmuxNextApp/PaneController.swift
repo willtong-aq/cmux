@@ -40,6 +40,11 @@ final class PaneController: SurfacePresenter, PresentablePane {
     var pendingDock = PendingDockChats() // chats bound for a new chat dock, never in this strip (NewChatPlacement)
     /// A tab this app just created or reopened here, selected once the daemon reports it (`selectWhenReported*`).
     var pendingSelect = PendingTabSelect()
+    /// A person's new tab press whose tab takes the selected tab as its opener (Chrome's Cmd-T; NewTabOpenerArm).
+    var newTabOpener: NewTabOpenerArm?
+    /// Each tab's id by surface as of the last strip apply: a tab that just closed keeps its opener relations for
+    /// the close rule (`closeOpeners`).
+    private var appliedSurfaces: [SurfaceID: String] = [:]
     let placements = WorkLine<ActionWorkFailure?>() // this pane's new tabs' moves into their slots, in press order: each reads its slot after the last (NewTabSlot)
     private var observation: Task<Void, Never>?
     /// One observation per daemon tab's strip item and focus kind (`focusPane` reads it; I1, I2).
@@ -344,9 +349,11 @@ final class PaneController: SurfacePresenter, PresentablePane {
         if stripModel.showsSelectedFullWidth != snapshot.fullWidthTab { stripModel.showsSelectedFullWidth = snapshot.fullWidthTab }
         if stripModel.zoomsSelected != snapshot.zoomed { stripModel.zoomsSelected = snapshot.zoomed; view.needsLayout = true } // the indicator (PaneContentView+ZoomIndicator)
         if stripModel.groups != snapshot.groups { stripModel.groups = snapshot.groups }
+        let previousSurfaces = appliedSurfaces
         if stripModel.tabs != snapshot.items {
             stripModel.tabs = snapshot.items
             noteNeighbors()  // a reorder, close or new tab moves the neighbors
+            appliedSurfaces = Dictionary(pane.tabs.map { ($0.surface, $0.id) }, uniquingKeysWith: { first, _ in first })
         }
         if stripModel.showsNewTabButton != snapshot.takesNewTabs { stripModel.showsNewTabButton = snapshot.takesNewTabs }
         if !snapshot.items.isEmpty { LaunchReveal.shared.markReady(.tabs) }
@@ -355,7 +362,12 @@ final class PaneController: SurfacePresenter, PresentablePane {
         // Members of a collapsed group are hidden: a closed selected tab's successor skips them while a shown tab survives (close-focus.md).
         let collapsed = Set(snapshot.groups.filter(\.isCollapsed).map(\.id))
         let hidden = Set(snapshot.items.filter { $0.groupID.map(collapsed.contains) ?? false }.map(\.id.rawValue))
-        let selected = state?.selection.resolve(pane: paneKey, tabs: snapshot.items.map(\.id.rawValue), defaultIndex: snapshot.defaultIndex, hidden: hidden)
+        let groups = Dictionary(snapshot.items.compactMap { item in item.groupID.map { (item.id.rawValue, $0.description) } }, uniquingKeysWith: { first, _ in first })
+        let selected = state?.selection.resolve(pane: paneKey, tabs: snapshot.items.map(\.id.rawValue), defaultIndex: snapshot.defaultIndex, hidden: hidden,
+                                                groups: groups, openers: { self.closeOpeners(including: previousSurfaces) })
+        if let arm = newTabOpener, let selected {
+            newTabOpener = arm.applied(selected: selected, surface: pane.tabs.first { $0.id == selected }?.surface, openers: services.cache.pageRequests.openers)
+        }
         setStripSelection(selected.map { StripTabID($0) })
         let selectedID = stripModel.selectedID
         sendTopologyIfChanged() // focus learns the selection before the show: the keyboard leaves the old tab first (showSelected)
@@ -408,6 +420,12 @@ final class PaneController: SurfacePresenter, PresentablePane {
         guard ActionRunScope.viewChangeAllowed() else { return apply(snapshot()) }
         pendingSelect.surface = surface
         apply(snapshot())
+    }
+
+    /// This pane's opener relations by tab id for Chrome's close rule (`BrowserTabOpeners.relations`); `earlier` (the
+    /// last apply's tabs) lets a tab that just closed keep its relations.
+    func closeOpeners(including earlier: [SurfaceID: String] = [:]) -> [String: String] {
+        services.cache.pageRequests.openers.relations(byTabID: earlier.merging(pane.tabs.map { ($0.surface, $0.id) }) { _, now in now })
     }
 
     /// Same, for a tab named by its resource id (a reopened tab).

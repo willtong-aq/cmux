@@ -4,7 +4,7 @@ public import Observation
 
 /// Client-local tab selection per pane (the daemon's `active_tab` is only a
 /// shared default). When the selected tab disappears, the selection goes to
-/// the tab before it, else the one after it (`FocusAfterClose.tab`). It also keeps the pane
+/// Chrome's successor (`FocusAfterClose.tab`: its family, else the tab after it, else before it). It also keeps the pane
 /// this window last focused in each workspace (the daemon's `focused_at` is a
 /// default the app never writes, focus.md 2), which a sidebar row's face reads.
 ///
@@ -19,6 +19,8 @@ public final class TabSelectionMemory {
     private let focused = ObservedMap<String, String>()
     /// The order `resolve` last saw per pane (for the neighbor after a close); never observed.
     @ObservationIgnored private var lastOrder: [String: [String]] = [:]
+    /// Each tab's group per pane as `resolve` last saw it (the closed tab's group decides Chrome's group step); never observed.
+    @ObservationIgnored private var lastGroups: [String: [String: String]] = [:]
     /// Bumped by every selection change in any pane: for a reader that follows
     /// all of this window's selections (one read, no walk of the panes).
     public private(set) var revision: UInt64 = 0
@@ -76,12 +78,18 @@ public final class TabSelectionMemory {
     public func focusedPane(in workspace: String) -> String? { focused[workspace] }
 
     /// The tab to show for `pane` given its current order. Remembers the
-    /// order so a later removal can pick the neighbor
-    /// (`FocusAfterClose.tab`: the shown tab before it, else the one after
-    /// it; a member of a collapsed group in `hidden` is skipped while a shown
-    /// tab survives).
-    public func resolve(pane: String, tabs: [String], defaultIndex: Int, hidden: Set<String> = []) -> String? {
-        defer { lastOrder[pane] = tabs }
+    /// order so a later removal can pick Chrome's successor
+    /// (`FocusAfterClose.tab`: a tab it opened, a sibling, its opener, else the
+    /// shown tab after it, else before it; a member of a collapsed group in
+    /// `hidden` is skipped while a shown tab survives). `openers` gives each
+    /// link or new tab's opener by tab id, read only when the selected tab left; `groups` each grouped tab's group.
+    public func resolve(pane: String, tabs: [String], defaultIndex: Int, hidden: Set<String> = [],
+                        groups: [String: String] = [:], openers: () -> [String: String] = { [:] }) -> String? {
+        let earlierGroups = lastGroups[pane] ?? [:]
+        defer {
+            lastOrder[pane] = tabs
+            if groups.isEmpty { lastGroups[pane] = nil } else { lastGroups[pane] = groups }
+        }
         guard !tabs.isEmpty else {
             set(nil, in: pane)
             return nil
@@ -89,8 +97,8 @@ public final class TabSelectionMemory {
         if let current = selected[pane] {
             if tabs.contains(current) { return current }
             if let old = lastOrder[pane], old.contains(current) {
-                let pick = FocusAfterClose.tab(selected: current, old: old, surviving: tabs,
-                                               shown: Set(tabs).subtracting(hidden)) ?? tabs[0]
+                let pick = FocusAfterClose.tab(selected: current, old: old, surviving: tabs, shown: Set(tabs).subtracting(hidden),
+                                               opener: openers(), group: earlierGroups.merging(groups) { _, now in now }) ?? tabs[0]
                 set(pick, in: pane)
                 return pick
             }
@@ -105,5 +113,6 @@ public final class TabSelectionMemory {
         for pane in selected.keys where !livePanes.contains(pane) { set(nil, in: pane) }
         selected.compact { livePanes.contains($0) }
         lastOrder = lastOrder.filter { livePanes.contains($0.key) }
+        lastGroups = lastGroups.filter { livePanes.contains($0.key) }
     }
 }

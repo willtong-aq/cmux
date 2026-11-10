@@ -1,4 +1,4 @@
-import CmuxNextDaemon
+public import CmuxNextDaemon
 import CmuxNextDesign
 
 /// Where a page's new tab goes, in Chrome's order (cx-d0d.19,
@@ -20,43 +20,40 @@ import CmuxNextDesign
 ///   does a typed navigation (`TabNavigating`), except a new tab page at the
 ///   end of the strip.
 ///
+/// - A person's new tab (Cmd-T, the +) records the tab they were on as its
+///   opener, after forgetting every relation, and loses it as soon as they
+///   switch away from it (`AddWebContents`' quick look-up,
+///   `reset_opener_on_active_tab_change`): Cmd-T then Cmd-W returns there.
+///
+/// The close rule reads these relations for every tab kind
+/// (`FocusAfterClose.tab`, Chrome's `DetermineNewSelectedIndex`).
+///
 /// The daemon commits the tab in the slot (`frontend-browser-insert-after-v1`);
 /// this type only names it. Placements for one opener run one at a time:
 /// the next slot depends on the tab the previous one made, and the caller's
 /// `create` returns only once the store shows that tab
 /// (`BrowserTabService.settled`).
-final class BrowserTabOpeners {
+public final class BrowserTabOpeners {
     /// Each link tab's opener, by surface.
-    private(set) var openerOf: [SurfaceID: SurfaceID] = [:]
+    public private(set) var openerOf: [SurfaceID: SurfaceID] = [:]
+    /// New tabs whose opener goes once the person switches away from them (``newTab(_:from:)``).
+    private var resetOnSwitch: Set<SurfaceID> = []
     /// The placement each opener's next one waits for.
     private var queue: [SurfaceID: Task<SurfaceID, any Error>] = [:]
     /// A page's new tab exists (child, opener): the browser host reports it
     /// as `tab.created`, so an agent driving the opener sees its popup.
-    var onChildPlaced: ((SurfaceID, SurfaceID) -> Void)?
+    public var onChildPlaced: ((SurfaceID, SurfaceID) -> Void)?
     /// Runs first for each placed child (child, opener): the App marks the
     /// child agent-driven when its opener is (`BrowserPageRequests`).
-    var inheritsFromOpener: ((SurfaceID, SurfaceID) -> Void)?
+    public var inheritsFromOpener: ((SurfaceID, SurfaceID) -> Void)?
 
-    /// A page's new tab in `pane`: `create(nil)` (the end) without an
-    /// opener; with one, in Chrome's slot, returning once the store shows
-    /// the new tab.
-    func open(_ opener: SurfaceID?, foreground: Bool, in pane: PaneModel, browserTabs: BrowserTabService,
-              create: @escaping @MainActor (_ after: SurfaceID?) async throws -> SurfaceID) async throws -> SurfaceID {
-        guard let opener else { return try await create(nil) }
-        let daemon = browserTabs.daemonForPane(pane)
-        return try await place(opener: opener, foreground: foreground,
-                               order: { [weak pane] in pane?.tabs.map(\.surface) ?? [] },
-                               pinned: { [weak pane] in Set(pane?.tabs.filter(\.pinned).map(\.surface) ?? []) }) { after in
-            let surface = try await create(after)
-            await browserTabs.settled(daemon)
-            return surface
-        }
-    }
+    /// An opener model with no relations.
+    public init() {}
 
     /// Creates the opener's new tab through `create(after)` in Chrome's slot
     /// and records the opener. `order` is the pane's tab order (surfaces) as
     /// the store shows it now; `pinned` its pinned tabs.
-    func place(opener: SurfaceID, foreground: Bool, order: @escaping @MainActor () -> [SurfaceID],
+    public func place(opener: SurfaceID, foreground: Bool, order: @escaping @MainActor () -> [SurfaceID],
                pinned: @escaping @MainActor () -> Set<SurfaceID> = { [] },
                create: @escaping @MainActor (_ after: SurfaceID) async throws -> SurfaceID) async throws -> SurfaceID {
         let previous = queue[opener]
@@ -81,7 +78,7 @@ final class BrowserTabOpeners {
 
     /// The tab a background child goes after: the last tab of the run of
     /// the opener's descendants that directly follows it, else the opener.
-    func slot(after opener: SurfaceID, in order: [SurfaceID], pinned: Set<SurfaceID> = []) -> SurfaceID {
+    public func slot(after opener: SurfaceID, in order: [SurfaceID], pinned: Set<SurfaceID> = []) -> SurfaceID {
         reconcile(with: order)
         guard let start = order.firstIndex(of: opener) else { return opener }
         var family: Set<SurfaceID> = [opener]
@@ -102,8 +99,10 @@ final class BrowserTabOpeners {
     /// is forgotten unless one is the other's opener or both share one.
     /// Two tabs without an opener are not siblings: moving between them
     /// forgets too, so a page's next background tab goes right of it.
-    func userActivated(from old: SurfaceID?, to new: SurfaceID?) {
+    public func userActivated(from old: SurfaceID?, to new: SurfaceID?) {
         let oldOpener = old.flatMap { openerOf[$0] }
+        // A person's new tab forgets its opener on any switch away (`OnActiveTabChanged`'s `ForgetOpener`).
+        if let old, resetOnSwitch.remove(old) != nil { openerOf[old] = nil }
         let newOpener = new.flatMap { openerOf[$0] }
         let siblings = oldOpener != nil && oldOpener == newOpener
         let openerAndChild = (old != nil && newOpener == old) || (new != nil && oldOpener == new)
@@ -113,18 +112,43 @@ final class BrowserTabOpeners {
     /// A tab navigated by a typed URL: the user starts another task, so
     /// every relation is forgotten, except in a new tab page that is the
     /// last tab of its pane (a quick look-up keeps them for one navigation).
-    func typedNavigation(onNewTabPageAtEnd: Bool) {
+    public func typedNavigation(onNewTabPageAtEnd: Bool) {
         if !onNewTabPageAtEnd { forgetAll() }
     }
 
-    func forgetAll() {
+    /// Forgets every opener relation.
+    public func forgetAll() {
         openerOf.removeAll()
+        resetOnSwitch.removeAll()
+    }
+
+    /// A person's new tab `child` (Cmd-T, the +) made while `opener` was selected: Chrome's typed new tab inherits the
+    /// opener (`ADD_INHERIT_OPENER`, foreground: every other relation forgotten first) until the person switches away.
+    public func newTab(_ child: SurfaceID, from opener: SurfaceID) {
+        guard child != opener, openerOf[child] != opener else { return }
+        forgetAll()
+        openerOf[child] = opener
+        resetOnSwitch.insert(child)
     }
 
     /// A foreground page tab (the GitHub page) a link made outside ``place``: Chrome's foreground rule (its next link tab goes beside it).
-    func adopt(_ child: SurfaceID, opener: SurfaceID) {
+    public func adopt(_ child: SurfaceID, opener: SurfaceID) {
         forgetAll()
         openerOf[child] = opener
+    }
+
+    /// The relations among one pane's tabs by tab id, for the close rule (`FocusAfterClose.tab`): `ids` names each
+    /// surface's tab (the pane's tabs now, plus those of its last apply, so a tab that just closed keeps its relations,
+    /// as Chrome reads them before the removal).
+    ///
+    /// - Parameter ids: Each surface's tab id.
+    /// - Returns: Each child tab's opener tab, both by tab id; relations naming a surface outside `ids` are left out.
+    public func relations(byTabID ids: [SurfaceID: String]) -> [String: String] {
+        var openers: [String: String] = [:]
+        for (child, parent) in openerOf {
+            if let child = ids[child], let parent = ids[parent] { openers[child] = parent }
+        }
+        return openers
     }
 
     /// Tabs the pane no longer shows (closed, moved away) leave the tree;
