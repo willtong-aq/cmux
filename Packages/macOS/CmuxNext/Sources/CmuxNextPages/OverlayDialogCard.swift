@@ -7,14 +7,13 @@ import CmuxNextDesign
 /// confirms.
 ///
 /// The card floats in the overlay panel, a clear window over the window it covers (a Chromium page, the
-/// main window). Liquid Glass there has nothing in its own window to bend: its lens bent the clear pixels
-/// into a dark 1 px outline under the sheet's rim and made the corner read as two shapes (Lawrence
-/// 2026-11-07, a Leave site? dialog over Gmail: "weird roundness", "weird border"). So the glass is the
-/// frosted blur of what is behind the window (`prefersBlurToLiquidGlass`), as the Import Cookies banner's
-/// is, with the sheet's rim as its one edge; Reduce Transparency keeps the opaque surface.
+/// main window). Its Liquid Glass bends that window's page, with the sheet's rim as its one edge
+/// (Lawrence 2026-11-09: "i need to be able to see liquid glass effect"; the frosted blur with the veil
+/// painted on it read flat). The blur (macOS 14 and 15) samples what is behind the window; Reduce
+/// Transparency keeps the opaque surface.
 @MainActor
 final class OverlayDialogCard: NSView {
-    /// The card's material: the blur, opaque under Reduce Transparency.
+    /// The card's material: the sheet's Liquid Glass, the blur before macOS 26, opaque under Reduce Transparency.
     let glass: OverlaySurfaceView
     /// The layer that casts the card's shadow, behind the glass: shaped by the card's rounded rect and cut
     /// away under it, so it never darkens the translucent glass (``PopupHostView``'s shadow).
@@ -25,7 +24,6 @@ final class OverlayDialogCard: NSView {
         // The card keeps the key-window glass: its panel gives key back as the close fade starts.
         glass = Glass.makeSurface(.sheet, content: NSView(), activeLook: activeLook)
         glass.samplesBehindWindow = true
-        glass.prefersBlurToLiquidGlass = true
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = false

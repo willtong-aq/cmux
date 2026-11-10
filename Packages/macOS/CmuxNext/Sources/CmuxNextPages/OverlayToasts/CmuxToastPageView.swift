@@ -96,11 +96,10 @@ final class CmuxToastPageView: NSView {
 
     private func makeGlass(_ serial: Int) -> OverlaySurfaceView {
         let surface = Glass.makeSurface(.toast, cornerRadius: SurfaceRole.toast.cornerRadius, interactive: false)
-        // The overlay panel is a clear window over the window it covers: Liquid Glass there has nothing to
-        // bend, and its lens drew a dark line and a bevel inside the rim (the Leave site? dialog's edge,
-        // Lawrence 2026-11-07). The blur samples what is behind the window, as the dialog card's does.
+        // The overlay panel is a clear window over the window it covers: Liquid Glass bends that window's
+        // page (Lawrence 2026-11-09: "i need to be able to see liquid glass effect"); the blur (macOS 14
+        // and 15) samples what is behind the window.
         surface.samplesBehindWindow = true
-        surface.prefersBlurToLiquidGlass = true
         surface.translatesAutoresizingMaskIntoConstraints = true
         surface.wantsLayer = true
         addSubview(surface, positioned: .below, relativeTo: page)
