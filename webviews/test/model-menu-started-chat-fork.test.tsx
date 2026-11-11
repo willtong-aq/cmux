@@ -465,6 +465,7 @@ test("a running turn still lets the chat browse and hold another harness's model
   const calls = await mountChat(
     chat(await acpmuxCatalog(), 1, {
       canFork: true,
+      canHandoff: true,
       isWorking: true,
     } as Partial<Snapshot>),
   );
@@ -500,7 +501,7 @@ test("a new chat still launches a named harness entry that lists no models from 
 });
 
 test("the chat composer's pick of another harness's model sends nothing until a message", async () => {
-  const calls = await mountChat(chat(await acpmuxCatalog(), 1, { canFork: true } as Partial<Snapshot>));
+  const calls = await mountChat(chat(await acpmuxCatalog(), 1, { canFork: true, canHandoff: true } as Partial<Snapshot>));
   await open();
   await showTab("Codex");
   await click(models()[0]!);
@@ -667,6 +668,7 @@ test("a pick in a chat that can fork asks nothing: no Fork to row and no chat ca
   const snapshot = chat(await acpmuxCatalog(), 1, {
     sessionId: "s1",
     canFork: true,
+    canHandoff: true,
   } as unknown as Partial<Snapshot>);
   const calls = await mountChat(snapshot);
   await open();
