@@ -564,6 +564,26 @@ class GroupHolderTests(unittest.TestCase):
                 ok, why = self.judge(holder=holder)
                 self.assertFalse(ok, why)
 
+    def test_live_nightly_next_titles_and_runs_that_are_in_no_shared_group(self):
+        # Titles of live runs on nightly-next, whose own nightly.yml keys these groups (`-push`, `-sign`):
+        # 42952791964 (a sign stage) and 42941668554 (a loop retry). main's nightly.yml keys main push runs by
+        # run id, and nightly-sign.yml per source run, so neither is ever a holder or a waiter here.
+        sign = self.holder(ident=42952791964, event="workflow_dispatch",
+                           title="Sign nightly-next run 42950072283 attempt 1")
+        retry = self.holder(ident=42941668554, event="workflow_dispatch", title="Retry nightly-next (1 of 2)")
+        self.assertEqual((dw.group_of(sign), dw.sign_source(sign)), ("sign", 42950072283))
+        self.assertEqual(dw.group_of(retry), "push")
+        for other in (self.holder() | {"head_branch": "main"}, retry | {"head_branch": "main"},
+                      sign | {"head_branch": "main"}, sign | {"path": ".github/workflows/nightly-sign.yml"},
+                      self.holder() | {"path": ".github/workflows/nightly-sign.yml"},
+                      self.holder(event="schedule"), self.holder(event="workflow_dispatch", title="Promote nightly-next to x")):
+            with self.subTest(other=(other["head_branch"], other["path"], other["event"], other["display_title"])):
+                self.assertIsNone(dw.group_of(other))
+        # A pending main push run at the tip's sha is never taken for the waiter.
+        main_waiter = self.waiter() | {"head_branch": "main"}
+        ok, why = self.judge(others=[main_waiter])
+        self.assertFalse(ok, why)
+
     def test_a_loop_retry_shares_the_push_group(self):
         retry = self.waiter(event="workflow_dispatch", title="Retry nightly-next (1 of 2)")
         self.assertEqual(dw.group_of(retry), "push")

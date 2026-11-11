@@ -349,7 +349,11 @@ REPLACEMENT_JOB_READS = 3
 # run 42930383771 held those groups for hours with every remaining job queued on a runner label that had
 # gone, and each new tip run (42945365476, 42947517129, 42948266530) sat pending with no jobs until the
 # next push replaced it. GitHub does not report a run's group, so it is told by what the expression keys
-# on: the event, and a dispatch's run name (nightly.yml's run-name).
+# on: the event, and a dispatch's run name (nightly.yml's run-name). These are the groups of the nightly.yml
+# on the nightly-next branch, which its runs (pushes, and dispatches with --ref nightly-next) run; main's
+# nightly.yml keys main's push runs by run id and nightly-sign.yml keys per source run, so only nightly.yml runs
+# whose head_branch is nightly-next count (live titles: 42952791964 "Sign nightly-next run 42950072283 attempt
+# 1", 42941668554 "Retry nightly-next (1 of 2)").
 GROUP_WORKFLOW, GROUP_BRANCH = "nightly.yml", "nightly-next"
 RETRY_TITLE = re.compile(r"^Retry nightly-next \([12] of 2\)$")
 SIGN_TITLE = re.compile(r"^Sign nightly-next run ([0-9]+) attempt [0-9]+$")
