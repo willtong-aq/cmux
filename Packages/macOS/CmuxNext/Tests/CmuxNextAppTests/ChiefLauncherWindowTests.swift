@@ -240,8 +240,10 @@ struct ChiefLauncherWindowTests {
         f.frame()
         #expect(!launcher.isVisible && !f.controller.frameChiefPanelShown && chief.window !== launcher, "Esc did not hide it")
         #expect(Self.perform("home.openChiefDock", f) && launcher.isVisible)
-        launcher.resignKey() // a click in another app or window
-        f.frame()
+        launcher.takeKeys()
+        await Self.settle { launcher.isKeyWindow }
+        f.controller.window?.makeKeyAndOrderFront(nil) // a click in another window takes the keys
+        await Self.settle { !launcher.isVisible }
         #expect(!launcher.isVisible && !f.controller.frameChiefPanelShown && chief.window !== launcher, "a click outside did not hide it")
     }
 
