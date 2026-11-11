@@ -82,7 +82,7 @@ public struct Palette {
     public static func sidebarDim(dark: Double, light: Double) -> NSColor? {
         let isDark = (ThemeContext.active ?? ThemeScope.app.tokens).isDark
         guard Metrics.mainPaneChromeShade(isDark: isDark) == 0 else { return nil }
-        let alpha = CGFloat(isDark ? dark : light)
+        let alpha = CGFloat(isDark ? max(dark, 0.2) : max(light, 0.025)) // SCRATCH: #39984 shipped dim
         return alpha > 0 ? NSColor.black.withAlphaComponent(alpha) : nil
     }
 
