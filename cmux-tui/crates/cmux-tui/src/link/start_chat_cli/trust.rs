@@ -2,8 +2,14 @@
 //! Mac's acpmux (home `H`, the one the App's chats use) answers the chat's
 //! folder here trusted, so the App records the same answer for the copy on the
 //! person's own Cloud machine and they are not asked again there for it.
+//!
+//! `cmux link start-chat trust --folder F --acpmux-home H` reads the same
+//! answer before any machine is taken (`cmux cloud start-session
+//! --from-folder`): a folder this Mac does not trust would be copied to a
+//! machine whose agent then refuses the copy, so the App refuses the start
+//! here, with the fix on this Mac, before it leases anything.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
