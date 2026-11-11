@@ -71,6 +71,42 @@ import Testing
         for (a, b) in segments.prefix(4) { #expect(abs((b.y - a.y) - (b.x - a.x)) < 0.001 && b.y > a.y) }
         #expect(segments[1].0.x - segments[0].0.x == 8)
     }
+
+    /// The hatch reads over the terminal's own background whatever the app's appearance: a light app over a dark
+    /// terminal theme drew a light-appearance divider over the dark ground, 1/255 from it (Nov 10 capture). Classic
+    /// takes the divider from the terminal background (Ghostty's `split-divider-color`), so it always shows.
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func theHatchReadsOverTheTerminalBackground(_ appearance: NSAppearance.Name) async throws {
+        _ = NSApplication.shared
+        _ = GhosttyRuntime.shared
+        let io = HatchScriptedIO()
+        let session = TerminalSession(io: io)
+        try #require(session.surfaceView.surface != nil, "libghostty created no surface")
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 360), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: appearance)
+        defer { io.finish(); window.close() }
+        window.contentView = session.view
+        session.view.layoutSubtreeIfNeeded()
+        io.send(.status(.connected))
+        io.send(.sizedFor(TerminalSizedFor(deviceName: "Maya's iPhone", deviceKind: "iphone", sameDevice: false,
+                                           grid: TerminalGridSize(columns: 20, rows: 5))))
+        var turns = 0
+        while session.view.sizedForText == nil, turns < 20_000 { await Task.yield(); turns += 1 }
+        try #require(session.view.sizedForText != nil, "the chip never showed")
+        session.view.layoutSubtreeIfNeeded()
+
+        let found = try #require(Self.hatch(in: session.view), "no hatch outside the 20×5 grid")
+        let ground = try #require(NSColor(cgColor: TerminalHostView.opaqueGround(nil))?.usingColorSpace(.sRGB))
+        let ink = try #require(found.lines.strokeColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) })
+        // The line as drawn: its color at its alpha over the ground, per channel, in 0...255.
+        let a = ink.alphaComponent
+        let delta = [(ink.redComponent, ground.redComponent), (ink.greenComponent, ground.greenComponent),
+                     (ink.blueComponent, ground.blueComponent)]
+            .map { abs(($0.0 * a + $0.1 * (1 - a)) - $0.1) * 255 }.max() ?? 0
+        #expect(delta >= 6, "a hatch line is \(delta)/255 from the terminal background in \(appearance.rawValue)")
+    }
 }
 
 /// A scripted ``TerminalIO``: the test sends its events.
