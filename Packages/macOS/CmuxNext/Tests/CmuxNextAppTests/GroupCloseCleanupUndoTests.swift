@@ -90,7 +90,12 @@ struct GroupCloseCleanupUndoTests {
         #expect(CmuxToastCenter.shared.runAction(id: Self.toastID, in: setup.window))
         @MainActor func held() -> Set<String> { Set(context.workspaces(inPersonalGroup: setup.group).map(\.name)) }
         try await PinnedPageTests.until({ held() == ["undo-1", "undo-2"] }, within: .seconds(60), report: {
-            "group \(personal.group(setup.group)?.name ?? "missing") holds \(held().sorted()); groups \(personal.groups.map(\.name))"
+            let open = services.machines.daemons.flatMap(\.store.workspaces).map { "\($0.name)[\(context.personalGroupID(of: $0)?.rawValue ?? "-")]" }
+            let rows = personal.workspaces.map { "\($0.workspaceKey.rawValue):\($0.group?.rawValue ?? "-")" }
+            let closed = DaemonClosedHistory.entries([.workspace], in: services).map {
+                "\($0.item.id) name=\($0.item.name ?? "nil") members=\($0.item.memberNames.map { $0 ?? "nil" }) group=\($0.item.group?.id ?? "-")"
+            }
+            return "group \(personal.group(setup.group)?.name ?? "missing") holds \(held().sorted()); groups \(personal.groups.map(\.name)); DIAG group id \(setup.group.rawValue); open \(open); rows \(rows); closed \(closed)"
         })
         let restored = try #require(personal.group(setup.group))
         #expect(restored.name == setup.name)
