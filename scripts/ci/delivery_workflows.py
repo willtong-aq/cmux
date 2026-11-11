@@ -137,7 +137,8 @@ def delivers(path: str | None, event: str | None, *names: str | None) -> bool:
 #      the group, so condition 3 as written could never hold. Here condition 2
 #      is READY_WAIT (5 min), not STALE_WAIT: every minute counts against the
 #      tip, and nothing of this run has started.
-#   Freshness: a run at the branch tip is never stale, and condition 3 asks
+#   Freshness: a run at the branch tip is never stale (a sign stage, which may
+#   sit at the tip while it signs an older build, is judged by 3b alone), and condition 3 asks
 #   for the tip itself to be building (or waiting on this run), so the newest
 #   tip always builds.
 # Anything unread (no jobs list, no branch, head or head repository) is not a
@@ -459,7 +460,10 @@ def superseded_unstarted(run: Mapping[str, Any], jobs: Sequence[Mapping[str, Any
     head, tip = str(run.get("head_sha") or "").lower(), str(tip_sha or "").lower()
     if not tip:
         return False, f"condition 3 cannot be checked: the tip of {run.get('head_branch')} could not be read"
-    if head == tip:
+    # A sign stage's head is whatever the branch tip was when its push run dispatched it, not the build it signs,
+    # so it may sit at the tip while signing an older build; in the sign group a later build's sign stage is the
+    # newest work (group_waiter() orders by the push run signed), so the freshness rule is the push group's.
+    if head == tip and group_of(run) != "sign":
         return False, (f"freshness rule: it builds the tip of {run.get('head_branch')}, and the newest tip must be "
                        "building")
     since = waited_since(run, jobs)

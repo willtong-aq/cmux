@@ -585,6 +585,21 @@ class GroupHolderTests(unittest.TestCase):
         push = self.waiter(head=sha("d"))
         self.assertFalse(self.judge(holder=old, others=[push], tip=sha("d"))[0], "a push run is not in the sign group")
 
+    def test_a_sign_stage_at_the_tip_signing_an_older_build_is_dropped_for_a_later_one(self):
+        # Its push run dispatched it after the tip had moved on, so its head is the tip; the later build's sign
+        # stage waits on it.
+        old = self.holder(ident=42930383771, head=sha("d"), event="workflow_dispatch",
+                          title="Sign nightly-next run 42925854615 attempt 1")
+        newer = self.waiter(ident=42950000000, head=sha("d"), event="workflow_dispatch",
+                            title="Sign nightly-next run 42929616529 attempt 1")
+        ok, why = self.judge(holder=old, others=[newer], tip=sha("d"))
+        self.assertTrue(ok, why)
+        # With nothing waiting on its group it stays.
+        ok, why = self.judge(holder=old, others=[], tip=sha("d"))
+        self.assertFalse(ok, why)
+        # A push holder at the tip is still never dropped.
+        self.assertIn("freshness rule", self.judge(holder=self.holder(head=sha("d")), tip=sha("d"))[1])
+
     def test_the_tip_waiting_on_the_push_group_does_not_drop_a_sign_holder(self):
         old = self.holder(event="workflow_dispatch", title="Sign nightly-next run 1 attempt 1")
         self.assertFalse(self.judge(holder=old)[0])

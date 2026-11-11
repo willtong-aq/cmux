@@ -180,12 +180,13 @@ def tick(api: Api, *, dry_run: bool = False, log: Callable[[str], None] = print)
             continue
         # Everything once more right before the cancel: a build that started, a tip that moved, a waiter that
         # went, or a pull request opened at its head keeps the run.
+        # The open pull requests first, so the jobs read sits right before the cancel.
         try:
+            prs = api.open_prs_at(str(listed.get("head_sha") or ""))
             fresh_tip, fresh_runs = api.tip(), api.runs()
             current = api.run(run_id)
             ok, why = judge(api, current, fresh_runs, fresh_tip, {})
             after = api.run(run_id)
-            prs = api.open_prs_at(str(current.get("head_sha") or "")) if ok else []
         except Unreadable as error:
             warn(f"run {run_id}: the re-read failed ({error}); kept")
             continue

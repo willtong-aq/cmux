@@ -34,7 +34,10 @@ Run = Callable[[Sequence[str]], str]
 
 
 def run_gh(args: Sequence[str]) -> str:
-    result = subprocess.run(["gh", *args], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    try:
+        result = subprocess.run(["gh", *args], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    except OSError as error:
+        raise RuntimeError(f"gh could not run: {error}") from error
     if result.returncode:
         raise RuntimeError(f"gh {' '.join(args[:3])} failed: {result.stderr.strip()[:300]}")
     return result.stdout
