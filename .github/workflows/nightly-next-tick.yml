@@ -261,6 +261,43 @@ jobs:
             echo "::warning title=nightly-next tick::no newer feat-cmux-next commit is promotable ($(wc -l < "$refusals" | tr -d ' ') refused): $tally"
           fi
 
+  # Latest wins (Leo, 2026-11-11: "aren't there things we can just be like 'ok just get this one in
+  # asap'"): an older nightly-next run that holds the push or sign group with none of its build, sign
+  # or publish jobs started is cancelled so the tip run waiting on that group starts; nightly.yml
+  # cannot do it itself, since the waiting run has no jobs. On 2026-11-10/11 runs whose jobs waited on
+  # a runner label that had gone held both groups for hours, and every tip run behind them was replaced
+  # while pending. The rule is delivery_workflows.superseded_unstarted() (condition 3b), the one the
+  # queue janitor and the agents' cancel guard read; scripts/ci/nightly_next_supersede.py. It runs for
+  # every tick, a dispatch for one commit too (scripts/ci/nightly_now.py), in its own fixed group.
+  supersede:
+    if: github.repository == 'manaflow-ai/cmux' && (github.event_name != 'workflow_run' || github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ${{ github.repository_owner != 'manaflow-ai' && 'ubuntu-24.04' || vars.CI_CONTROL_RUNNER || 'blacksmith-2vcpu-ubuntu-2404' }}
+    # A few reads and at most two cancels.
+    timeout-minutes: 10
+    concurrency:
+      group: nightly-next-tick-supersede
+      cancel-in-progress: false
+    permissions:
+      # actions: write cancels a superseded run that never started.
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          path: .tick-tooling
+          sparse-checkout: |
+            scripts/ci/delivery_workflows.py
+            scripts/ci/nightly_next_supersede.py
+          sparse-checkout-cone-mode: false
+
+      - name: Drop an older nightly-next run that holds the tip's group and never started
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u .tick-tooling/scripts/ci/nightly_next_supersede.py "$GITHUB_REPOSITORY"
+
   # The stuck-run rescue and the cancelled-tip re-run, in their own job so their 3-minute
   # failover fires about 3 minutes after a nightly job stalls. In the request job they ran only
   # after it got a runner and a 150-commit checkout of feat-cmux-next, behind one serialized

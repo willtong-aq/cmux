@@ -1239,6 +1239,19 @@ manual choice wins over the variable; both dropdowns expose Blacksmith, Warp,
 and `depot-macos-*` choices, with a Depot identity guard for GUI-activation
 runs. These choices are available only through `workflow_dispatch`.
 
+### Ship a nightly now
+
+`python3 scripts/ci/nightly_now.py [SHA]` asks main's `nightly-next-tick.yml` for
+SHA (default: the tip of `feat-cmux-next`), skipping the rolling rule's wait, so
+the newest buildable commit at or before it goes to `nightly-next` and builds.
+The tick's `supersede` job, which runs on every tick, cancels an older
+`nightly-next` run that holds the push or sign group while none of its build,
+sign or publish jobs has started and the tip's run waits on that group
+(`scripts/ci/nightly_next_supersede.py`, under
+`delivery_workflows.superseded_unstarted()`). It never cancels a started job or
+the tip's own run. `--check` prints what it would drop; `--dry-run` sends
+nothing.
+
 ## Guard
 
 `tests/test_ci_self_hosted_guard.sh` (run by the `workflow-guard-tests` job)

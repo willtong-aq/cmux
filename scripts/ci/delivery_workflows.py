@@ -15,9 +15,12 @@ tip: cancel the stale runs and move the nightly branch to the tip" (Leo,
 2026-10-26). A run is stale only when every job but the light control and
 decide ones (LIGHT_JOBS) is still queued for a runner, it has waited at least
 STALE_WAIT (20 min), and a newer tip run is already building (sr2,
-2026-10-28). superseded_unstarted() below is that rule, read by the queue
-janitor (which skips such runs) and by the agents' cancel guard, which reads
-this file from origin/main.
+2026-10-28), or it has waited READY_WAIT (5 min) while it holds a nightly-next
+concurrency group that the newer tip's run waits on (latest wins, 2026-11-11).
+superseded_unstarted() below is that rule, read by the queue janitor (which
+skips such runs), by nightly-next-tick.yml's supersede step
+(scripts/ci/nightly_next_supersede.py) and by the agents' cancel guard, which
+reads this file from origin/main.
 
 Nightly promotion runs inside nightly.yml (promote-nightly-next), so the
 nightly glob covers it. A glob picks up a new workflow on its own; REQUIRED
@@ -126,8 +129,17 @@ def delivers(path: str | None, event: str | None, *names: str | None) -> bool:
 #      succeeded, none of its jobs past the light ones failed, and every job
 #      the old run lists unskipped is listed there too, live or succeeded (a
 #      cache-only or throttled run skips them).
+#   3b. Or the run holds a nightly-next concurrency group (group_of()) and the
+#      newer run GitHub keeps pending in that group waits on it with no job
+#      yet: the tip's own push run (or the loop's retry, which builds the
+#      newest head) for the push group, a sign stage of a later push run for
+#      the sign group. Such a newer run can never start while this one holds
+#      the group, so condition 3 as written could never hold. Here condition 2
+#      is READY_WAIT (5 min), not STALE_WAIT: every minute counts against the
+#      tip, and nothing of this run has started.
 #   Freshness: a run at the branch tip is never stale, and condition 3 asks
-#   for the tip itself to be building, so the newest tip always builds.
+#   for the tip itself to be building (or waiting on this run), so the newest
+#   tip always builds.
 # Anything unread (no jobs list, no branch, head or head repository) is not a
 # skip. A re-run (run_attempt > 1) is judged on its own attempt's jobs: a
 # re-run of a build that ran is a new build, and until a job of this attempt
@@ -153,6 +165,9 @@ LIGHT_JOBS = frozenset({
     "probe-nightly-tag-permission",        # the tag permission probe
 })
 STALE_WAIT = _dt.timedelta(minutes=20)
+# Condition 2 when the tip waits on the run's own group (3b): over the tick's 3-minute stuck-job read
+# (nightly_next_stuck_run.STUCK_MINUTES), so a job that is about to get a runner gets it first.
+READY_WAIT = _dt.timedelta(minutes=5)
 KNOWN_CONCLUSIONS = frozenset({"success", "failure", "cancelled", "neutral", "timed_out", "action_required",
                                "stale", "startup_failure"})
 FAILED_CONCLUSIONS = frozenset({"failure", "cancelled", "timed_out", "action_required", "startup_failure"})
@@ -325,13 +340,100 @@ def builds_the_same(waiting: Sequence[str], other_jobs: Sequence[Mapping[str, An
 REPLACEMENT_JOB_READS = 3
 
 
+# --- the nightly-next concurrency groups (condition 3b) -----------------------
+# nightly.yml's `concurrency.group` puts nightly-next pushes and the loop's retries in
+# nightly-build-nightly-next-push and the sign stages in nightly-build-nightly-next-sign, with
+# cancel-in-progress false: one run holds a group, and GitHub keeps one newer run pending behind it,
+# replacing that one with each newer push. On 2026-11-10/11 push runs 42925854615 and 42929616529 and sign
+# run 42930383771 held those groups for hours with every remaining job queued on a runner label that had
+# gone, and each new tip run (42945365476, 42947517129, 42948266530) sat pending with no jobs until the
+# next push replaced it. GitHub does not report a run's group, so it is told by what the expression keys
+# on: the event, and a dispatch's run name (nightly.yml's run-name).
+GROUP_WORKFLOW, GROUP_BRANCH = "nightly.yml", "nightly-next"
+RETRY_TITLE = re.compile(r"^Retry nightly-next \([12] of 2\)$")
+SIGN_TITLE = re.compile(r"^Sign nightly-next run ([0-9]+) attempt [0-9]+$")
+GROUP_WAITING_STATUSES = frozenset({"pending"})  # what GitHub shows for a run waiting on its group
+
+
+def group_of(run: Mapping[str, Any]) -> str | None:
+    """"push" or "sign" for a nightly-next run in a shared group of nightly.yml, else None (run-scoped)."""
+    if _file_name(run.get("path")) != GROUP_WORKFLOW or run.get("head_branch") != GROUP_BRANCH:
+        return None
+    titles = [str(run.get(key) or "") for key in ("display_title", "name")]
+    if run.get("event") == "push":
+        return "push"
+    if run.get("event") == "workflow_dispatch":
+        if any(RETRY_TITLE.match(title) for title in titles):
+            return "push"
+        if any(SIGN_TITLE.match(title) for title in titles):
+            return "sign"
+    return None
+
+
+def sign_source(run: Mapping[str, Any]) -> int | None:
+    """The push run a sign stage signs (from its run name), or None."""
+    for key in ("display_title", "name"):
+        match = SIGN_TITLE.match(str(run.get(key) or ""))
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def group_waiter(run: Mapping[str, Any], runs: Iterable[Mapping[str, Any]],
+                 jobs_of: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]] | None], tip: str,
+                 ) -> tuple[Mapping[str, Any] | None, str]:
+    """(the newer run waiting on `run`'s group, why) for condition 3b, or (None, why not). The waiter is the newest
+    run pending in the same group of the same workflow, branch and head repository, created after `run`, with no
+    jobs (one read): for the push group at the branch tip `tip`, for the sign group signing a later push run."""
+    group = group_of(run)
+    if group is None:
+        return None, "it holds no shared nightly-next group"
+    created, repo = _time(run.get("created_at")), _head_repo(run)
+    if created is None or not repo:
+        return None, "its creation or head repository could not be read"
+    mine = sign_source(run) if group == "sign" else None
+    if group == "sign" and mine is None:
+        return None, "the push run its sign stage signs could not be read"
+    waiting = []
+    for other in runs:
+        if (other.get("id") == run.get("id") or _workflow_key(other) != _workflow_key(run) or group_of(other) != group
+                or _head_repo(other) != repo or other.get("status") not in GROUP_WAITING_STATUSES
+                or other.get("run_attempt") != 1):
+            continue
+        when = _time(other.get("created_at"))
+        if when is None or when <= created:
+            continue
+        if group == "push" and str(other.get("head_sha") or "").lower() != tip:
+            continue
+        if group == "sign" and (sign_source(other) or 0) <= (mine or 0):
+            continue
+        waiting.append((when, other))
+    if not waiting:
+        return None, (f"no newer run {'at the tip ' + tip[:12] + ' ' if group == 'push' else ''}waits on its "
+                      f"{group} group")
+    # GitHub keeps one pending run per group: the newest is the one that starts next.
+    other = max(waiting, key=lambda pair: pair[0])[1]
+    theirs = jobs_of(other)
+    if theirs is None:
+        return None, f"the jobs of run {other.get('id')}, waiting in its {group} group, could not be read"
+    if theirs:
+        return None, f"run {other.get('id')} lists jobs, so it is not waiting on the group"
+    return other, f"run {other.get('id')} ({str(other.get('head_sha'))[:12]}) waits on its {group} group"
+
+
 def superseded_unstarted(run: Mapping[str, Any], jobs: Sequence[Mapping[str, Any]] | None,
                          runs: Iterable[Mapping[str, Any]],
                          jobs_of: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]] | None] | None = None,
                          *, now: _dt.datetime | None = None, tip_sha: str | None = None,
-                         stale_wait: _dt.timedelta = STALE_WAIT) -> tuple[bool, str]:
+                         stale_wait: _dt.timedelta = STALE_WAIT,
+                         ready_wait: _dt.timedelta = READY_WAIT) -> tuple[bool, str]:
     """(True, why) when a delivery run is stale and may be skipped for the tip; (False, why not) otherwise. Both
     name the condition that held or failed.
+
+    Condition 3b (latest wins, 2026-11-11): a nightly-next run that holds its concurrency group while the
+    newer run GitHub keeps pending there waits on it (group_waiter()) is stale once it has waited `ready_wait`,
+    with conditions 1 and the freshness rule as below. Leo: "aren't there things we can just be like 'ok just
+    get this one in asap'".
 
     The rule (sr2, 2026-10-28): "count a nightly, dev or promote run as stale, and so cancellable, only when all
     of these hold: 1. every job except light control jobs and decide jobs is still queued for a runner; 2. it has
@@ -366,19 +468,32 @@ def superseded_unstarted(run: Mapping[str, Any], jobs: Sequence[Mapping[str, Any
     now = now or _dt.datetime.now(_dt.timezone.utc)
     waited = now - since
     minutes = int(stale_wait.total_seconds() // 60)
+    pending = sum(1 for job in jobs if job.get("status") in WAITING_JOB_STATUSES)
+    blocked_why = ""
+    if group_of(run) is not None and jobs_of is not None:
+        if waited >= ready_wait:
+            waiter, blocked_why = group_waiter(run, runs, jobs_of, tip)
+            if waiter is not None:
+                return True, (f"stale: (1) every job but the light control and decide ones is queued for a runner or "
+                              f"skipped ({pending} job(s) waiting); (2) it has waited "
+                              f"{int(waited.total_seconds() // 60)} min since it last moved (at least "
+                              f"{int(ready_wait.total_seconds() // 60)}, the tip waiting on it); (3b) it holds its "
+                              f"group and {blocked_why}")
+        else:
+            blocked_why = (f"it has waited {int(waited.total_seconds() // 60)} min, under "
+                           f"{int(ready_wait.total_seconds() // 60)}")
     if waited < stale_wait:
         return False, (f"condition 2 fails: it has waited {int(waited.total_seconds() // 60)} min since it last "
-                       f"moved, under {minutes} min")
+                       f"moved, under {minutes} min" + (f" (3b: {blocked_why})" if blocked_why else ""))
     # Every leg, with multiplicity: matrix legs may share a name, and each needs its own leg in the newer run.
     listed = sorted(str(job.get("name") or "") for job in jobs if job.get("conclusion") != "skipped")
     newer = [other for other in newer_head_runs(run, runs) if str(other.get("head_sha") or "").lower() == tip]
     if not newer:
         return False, (f"condition 3 fails: no newer head of {run.get('head_branch') or 'its branch'} at its tip "
-                       f"{tip[:12]} has its own run of this workflow")
+                       f"{tip[:12]} has its own run of this workflow" + (f" (3b: {blocked_why})" if blocked_why else ""))
     if jobs_of is None:
         return False, "condition 3 fails: the newer runs' jobs were not read"
     why_not = ""
-    pending = sum(1 for job in jobs if job.get("status") in WAITING_JOB_STATUSES)
     for other in newer[:REPLACEMENT_JOB_READS]:
         theirs = jobs_of(other)
         problem = building(theirs) or builds_the_same(listed, theirs)
@@ -389,7 +504,7 @@ def superseded_unstarted(run: Mapping[str, Any], jobs: Sequence[Mapping[str, Any
                           f"tip {str(other.get('head_sha'))[:12]} of {run.get('head_branch')}")
         why_not = why_not or f"run {other.get('id')}: {problem}"
     return False, (f"condition 3 fails: no newer run of {run.get('head_branch')} at its tip is building in its place "
-                   f"({why_not})")
+                   f"({why_not})" + (f" (3b: {blocked_why})" if blocked_why else ""))
 
 
 # --- DEV publish runs a newer publish already covered ---------------------------

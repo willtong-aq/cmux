@@ -484,6 +484,118 @@ class StaleRuleTests(unittest.TestCase):
 
 
 
+class GroupHolderTests(unittest.TestCase):
+    """Latest wins (2026-11-11): an older nightly-next run holding the push or sign group, none of its build, sign
+    or publish jobs started, is stale once the tip's run has waited on that group for READY_WAIT. Push runs
+    42925854615 and 42929616529 and sign run 42930383771 held the groups for hours on a gone runner label; tip
+    runs 42945365476, 42947517129 and 42948266530 were each replaced while pending with no jobs."""
+
+    DEAD = "dead-light-label"
+
+    def holder(self, *, ident=42925854615, head=sha("a"), event="push", title="x", created=at(0)):
+        return run(head, status="in_progress", created=created, ident=ident) | {"event": event, "display_title": title}
+
+    def waiter(self, *, ident=42948266530, head=sha("b"), event="push", title="x", created=at(30), status="pending"):
+        return run(head, status=status, created=created, ident=ident) | {"event": event, "display_title": title}
+
+    def queued_jobs(self):
+        return [job("decide", start=at(1), end=at(2)),
+                job("build-nightly-app", "queued", labels=(self.DEAD,), start=at(2)),
+                job("signer-build", "queued", labels=(self.DEAD,), start=at(2))]
+
+    def judge(self, holder=None, jobs=None, others=None, *, now=at(40), tip=sha("b"), waiter_jobs=()):
+        holder = holder or self.holder()
+        others = [self.waiter()] if others is None else others
+        return dw.superseded_unstarted(holder, self.queued_jobs() if jobs is None else jobs, [holder, *others],
+                                       lambda other: None if waiter_jobs is None else list(waiter_jobs),
+                                       now=dw._time(now), tip_sha=tip)
+
+    def test_the_tip_waiting_on_a_queued_only_holder_drops_it(self):
+        ok, why = self.judge()
+        self.assertTrue(ok, why)
+        self.assertIn("(3b)", why)
+        self.assertIn("42948266530", why)
+
+    def test_the_ready_wait_is_5_minutes_since_the_holder_last_moved(self):
+        self.assertEqual(dw.READY_WAIT, dw._dt.timedelta(minutes=5))
+        self.assertTrue(self.judge(now=at(7))[0])  # last moved at 2
+        ok, why = self.judge(now=at(6))
+        self.assertFalse(ok)
+        self.assertIn("3b: it has waited 4 min, under 5", why)
+
+    def test_a_started_build_sign_or_publish_job_keeps_the_holder(self):
+        for started in (job("build-nightly-app", "in_progress", labels=(MAC,), start=at(5)),
+                        job("build-nightly-app", "queued", labels=(MAC,), start=at(5)) | {"runner_name": "mini-1"},
+                        job("build-sign-notarize-nightly", "in_progress", labels=(MAC,), start=at(5)),
+                        job("publish-nightly", "completed", "failure", start=at(5), end=at(6)),
+                        job("signer-build", start=at(2), end=at(4))):
+            with self.subTest(job=started["name"], status=started["status"]):
+                ok, why = self.judge(jobs=[job("decide", start=at(1), end=at(2)), started])
+                self.assertFalse(ok)
+                self.assertIn("condition 1 fails", why)
+
+    def test_the_newest_tip_is_never_dropped(self):
+        ok, why = self.judge(tip=sha("a"))
+        self.assertFalse(ok)
+        self.assertIn("freshness rule", why)
+
+    def test_no_waiter_or_a_waiter_that_is_not_at_the_tip_or_has_jobs_keeps_it(self):
+        cases = {
+            "no newer run": dict(others=[]),
+            "waiter off the tip": dict(tip=sha("c")),
+            "waiter lists jobs": dict(waiter_jobs=[job("decide", "queued", start=at(31))]),
+            "waiter jobs unread": dict(waiter_jobs=None),
+            "waiter is queued, not pending": dict(others=[self.waiter(status="queued")]),
+            "waiter is older": dict(others=[self.waiter(created="2026-10-28T18:00:00Z")]),
+            "waiter is another branch": dict(others=[self.waiter() | {"head_branch": "main"}]),
+            "waiter is a fork": dict(others=[self.waiter() | {"head_repository": {"full_name": "x/cmux"}}]),
+            "waiter is run-scoped": dict(others=[self.waiter(event="workflow_dispatch")]),
+        }
+        for label, kwargs in cases.items():
+            with self.subTest(label):
+                ok, why = self.judge(**kwargs)
+                self.assertFalse(ok, why)
+
+    def test_only_shared_nightly_next_groups_count(self):
+        for holder in (self.holder(event="workflow_dispatch"), self.holder() | {"head_branch": "main"},
+                       self.holder() | {"path": ".github/workflows/cmux-next-dev-daily.yml"}):
+            with self.subTest(holder=holder):
+                self.assertIsNone(dw.group_of(holder))
+                ok, why = self.judge(holder=holder)
+                self.assertFalse(ok, why)
+
+    def test_a_loop_retry_shares_the_push_group(self):
+        retry = self.waiter(event="workflow_dispatch", title="Retry nightly-next (1 of 2)")
+        self.assertEqual(dw.group_of(retry), "push")
+        self.assertTrue(self.judge(others=[retry])[0])
+        holder = self.holder(event="workflow_dispatch", title="Retry nightly-next (2 of 2)")
+        self.assertTrue(self.judge(holder=holder)[0])
+
+    def test_a_sign_stage_waiting_on_an_older_sign_stage(self):
+        old = self.holder(ident=42930383771, event="workflow_dispatch", title="Sign nightly-next run 42925854615 attempt 1")
+        self.assertEqual(dw.group_of(old), "sign")
+        newer = self.waiter(ident=42950000000, event="workflow_dispatch", head=sha("c"),
+                            title="Sign nightly-next run 42929616529 attempt 1")
+        # The sign stage's head need not be the branch tip; it signs a later push run.
+        ok, why = self.judge(holder=old, others=[newer], tip=sha("d"))
+        self.assertTrue(ok, why)
+        self.assertIn("sign group", why)
+        same = newer | {"display_title": "Sign nightly-next run 42925854615 attempt 2"}
+        self.assertFalse(self.judge(holder=old, others=[same], tip=sha("d"))[0])
+        push = self.waiter(head=sha("d"))
+        self.assertFalse(self.judge(holder=old, others=[push], tip=sha("d"))[0], "a push run is not in the sign group")
+
+    def test_the_tip_waiting_on_the_push_group_does_not_drop_a_sign_holder(self):
+        old = self.holder(event="workflow_dispatch", title="Sign nightly-next run 1 attempt 1")
+        self.assertFalse(self.judge(holder=old)[0])
+
+    def test_the_20_minute_path_is_unchanged_for_run_scoped_runs(self):
+        holder = self.holder(event="workflow_dispatch")
+        ok, why = self.judge(holder=holder, now=at(40))
+        self.assertFalse(ok)
+        self.assertNotIn("(3b)", why)
+
+
 # --- DEV publish runs a newer publish covered (2026-10-31: 115 queued, oldest 37 h) ----------------------------
 DEV_NOW = dw._dt.datetime(2026, 10, 31, 5, 0, tzinfo=dw._dt.timezone.utc)
 OLD_SRC, NEW_SRC = sha("a"), sha("b")

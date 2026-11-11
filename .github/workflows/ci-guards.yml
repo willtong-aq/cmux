@@ -796,6 +796,10 @@ jobs:
         if: ${{ matrix.group == 'ci' }}
         run: python3 tests/test_nightly_next_stuck_run.py
 
+      - name: Validate the nightly-next tick drops an older run that holds the tip's group and never started
+        if: ${{ matrix.group == 'ci' }}
+        run: python3 tests/test_nightly_next_supersede.py
+
       - name: Validate the hosted test deadline watchdog
         if: ${{ matrix.group == 'ci' }}
         run: python3 tests/test_ci_test_deadline.py
