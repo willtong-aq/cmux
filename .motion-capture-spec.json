@@ -1,0 +1,9 @@
+{ "envs": [["light","none"],["dark","none"]],
+  "shots": [
+    {"name":"status-swap-at-rest","entry":"agent-pane.status-swap","variant":"at-rest","width":760,"height":320,"deviceScaleFactor":2,"arms":{"now":""}},
+    {"name":"status-swap-mid-roll-half","entry":"agent-pane.status-swap","variant":"mid-roll-half","width":760,"height":320,"deviceScaleFactor":2,"arms":{"now":""}},
+    {"name":"status-swap-leo-sequence","entry":"agent-pane.status-swap","variant":"leo-sequence","width":760,"height":320,"deviceScaleFactor":2,"arms":{"now":""}},
+    {"name":"status-swap-leo-mid-roll","entry":"agent-pane.status-swap","variant":"leo-sequence-mid-roll","width":760,"height":320,"deviceScaleFactor":2,"arms":{"now":""}},
+    {"name":"dock-grown-overlay","entry":"agent-pane.composer-dock-motion","variant":"grown-overlay","width":900,"height":640,"deviceScaleFactor":2,"arms":{"now":""}},
+    {"name":"dock-sent-overlay","entry":"agent-pane.composer-dock-motion","variant":"sent-overlay","width":900,"height":640,"deviceScaleFactor":2,"arms":{"now":""}}
+  ] }
